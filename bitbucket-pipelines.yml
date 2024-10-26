@@ -1,0 +1,101 @@
+image: gcr.io/google.com/cloudsdktool/google-cloud-cli:latest
+
+definitions:
+  services:
+    docker:
+      memory: 1536
+
+pipelines:
+  branches:
+    gcp_sit:
+      - step:
+          name: "SIT-Build and push and deploy"
+          services: [docker]
+          runs-on:
+            - linux
+            - self.hosted
+            - gcp
+            - sit
+          script:
+            - GCR_REPOSITORY="sit-artifact-registry"
+            - REPLICAS="1"
+            - ENV_TIER="sit"
+            - CPU_LIMIT="50m"
+            - MEMORY_LIMIT="100Mi"
+            - CPU_REQUEST="50m"
+            - MEMORY_REQUEST="100Mi"
+            - curl -LO https://dl.k8s.io/v1.30.0/bin/linux/amd64/kubectl
+            - chmod +x kubectl
+            - mv kubectl /usr/local/bin/
+            - kubectl version --client
+            - export BITBUCKET_COMMIT_SHORT=$(echo $BITBUCKET_COMMIT | cut -c1-7)
+            - echo $BITBUCKET_COMMIT_SHORT
+            - COMMITID=sl-$BITBUCKET_COMMIT_SHORT
+            - export GCR_REGISTRY="asia-southeast2-docker.pkg.dev/$SIT_GCP_PROJ_ID"
+            - gcloud auth configure-docker asia-southeast2-docker.pkg.dev
+            - export DOCKER_BUILDKIT=0
+            - mv .env.example .env
+            - sed -i "s|local|${ENV_TIER}|g" .env
+            - echo $GCR_REGISTRY
+            - echo $SIT_GCP_PROJ_ID
+            - docker build -t ${GCR_REGISTRY}/${GCR_REPOSITORY}/statement-service:${BITBUCKET_COMMIT_SHORT} -t ${GCR_REGISTRY}/${GCR_REPOSITORY}/statement-service:latest .
+            - docker push -a ${GCR_REGISTRY}/${GCR_REPOSITORY}/statement-service
+            - IMAGE=${GCR_REGISTRY}/${GCR_REPOSITORY}/statement-service:${BITBUCKET_COMMIT_SHORT}
+            - gcloud container clusters get-credentials s-sl-cluster --region asia-southeast2 --project $SIT_GCP_PROJ_ID
+            - cd deploy
+            - sed -i "s|IMAGE|${IMAGE}|g" statement-service-deploy.yaml
+            - sed -i "s|COMMITID|${COMMITID}|g" statement-service-deploy.yaml
+            - sed -i "s/REPLICAS/${REPLICAS}/g" statement-service-deploy.yaml
+            - sed -i "s/ENV_TIER/${ENV_TIER}/g" statement-service-deploy.yaml
+            - sed -i "s/CPU_LIMIT/${CPU_LIMIT}/g" statement-service-deploy.yaml
+            - sed -i "s/MEMORY_LIMIT/${MEMORY_LIMIT}/g" statement-service-deploy.yaml
+            - sed -i "s/CPU_REQUEST/${CPU_REQUEST}/g" statement-service-deploy.yaml
+            - sed -i "s/MEMORY_REQUEST/${MEMORY_REQUEST}/g" statement-service-deploy.yaml
+            - kubectl apply -f statement-service-deploy.yaml
+            - sleep 7 
+            - kubectl get pods -o wide
+    gcp_prod:
+      - step:
+          name: "SIT-Build and push and deploy"
+          services: [docker]
+          runs-on:
+            - linux
+            - self.hosted
+            - gcp
+            - prod
+          script:
+            - GCR_REPOSITORY="prod-artifact-registry"
+            - REPLICAS="2"
+            - ENV_TIER="production"
+            - CPU_LIMIT="200m"
+            - MEMORY_LIMIT="700Mi"
+            - CPU_REQUEST="200m"
+            - MEMORY_REQUEST="600Mi"
+            - curl -LO https://dl.k8s.io/v1.30.0/bin/linux/amd64/kubectl
+            - chmod +x kubectl
+            - mv kubectl /usr/local/bin/
+            - kubectl version --client
+            - export BITBUCKET_COMMIT_SHORT=$(echo $BITBUCKET_COMMIT | cut -c1-7)
+            - echo $BITBUCKET_COMMIT_SHORT
+            - COMMITID=sl-$BITBUCKET_COMMIT_SHORT
+            - export GCR_REGISTRY="asia-southeast2-docker.pkg.dev/$PROD_GCP_PROJ_ID"
+            - gcloud auth configure-docker asia-southeast2-docker.pkg.dev
+            - export DOCKER_BUILDKIT=0
+            - mv .env.example .env
+            - sed -i "s|local|${ENV_TIER}|g" .env
+            - docker build -t ${GCR_REGISTRY}/${GCR_REPOSITORY}/statement-service:${BITBUCKET_COMMIT_SHORT} -t ${GCR_REGISTRY}/${GCR_REPOSITORY}/statement-service:latest .
+            - docker push -a ${GCR_REGISTRY}/${GCR_REPOSITORY}/statement-service
+            - IMAGE=${GCR_REGISTRY}/${GCR_REPOSITORY}/statement-service:${BITBUCKET_COMMIT_SHORT}
+            - gcloud container clusters get-credentials p-sl-gke-cluster --region asia-southeast2 --project $PROD_GCP_PROJ_ID
+            - cd deploy
+            - sed -i "s|IMAGE|${IMAGE}|g" statement-service-deploy.yaml
+            - sed -i "s|COMMITID|${COMMITID}|g" statement-service-deploy.yaml
+            - sed -i "s/REPLICAS/${REPLICAS}/g" statement-service-deploy.yaml
+            - sed -i "s/ENV_TIER/${ENV_TIER}/g" statement-service-deploy.yaml
+            - sed -i "s/CPU_LIMIT/${CPU_LIMIT}/g" statement-service-deploy.yaml
+            - sed -i "s/MEMORY_LIMIT/${MEMORY_LIMIT}/g" statement-service-deploy.yaml
+            - sed -i "s/CPU_REQUEST/${CPU_REQUEST}/g" statement-service-deploy.yaml
+            - sed -i "s/MEMORY_REQUEST/${MEMORY_REQUEST}/g" statement-service-deploy.yaml
+            - kubectl apply -f statement-service-deploy.yaml
+            - sleep 7 
+            - kubectl get pods -o wide

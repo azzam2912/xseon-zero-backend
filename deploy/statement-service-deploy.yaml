@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sl-statement-service
+  #namespace: app
+spec:
+  selector:
+    matchLabels:
+      app: sl-statement-service
+  replicas: REPLICAS
+  template:
+    metadata:
+      labels:
+        app: sl-statement-service
+    spec:
+      containers:
+      - name: sl-statement-service
+        image: IMAGE
+        env:
+        - name: TIER
+          value: ENV_TIER
+        - name: COMMIT_ID
+          value: COMMITID
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: CPU_LIMIT
+            memory: MEMORY_LIMIT
+  #         requests:
+  #           cpu: CPU_REQUEST
+  #           memory: MEMORY_REQUEST
+  #       readinessProbe:
+  #         httpGet:
+  #           path: /
+  #           port: 80
+  #         initialDelaySeconds: 5
+  #         periodSeconds: 10
+  # strategy:
+  #   type: RollingUpdate
+  #   rollingUpdate:
+  #     maxSurge: 1
+  #     maxUnavailable: 1
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sl-statement-service-hpa
+  namespace: default
+  labels:
+    app: sl-statement-service
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: sl-statement-service
+    apiVersion: apps/v1
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: sl-statement-svc
+  #namespace: app
+spec:
+  selector:
+    app: sl-statement-service
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+  type: NodePort # LoadBalancer # NodePort # ClusterIP
